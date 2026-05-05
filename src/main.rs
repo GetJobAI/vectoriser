@@ -69,7 +69,9 @@ async fn run_serve() -> Result<()> {
     .context("Failed to connect to PostgreSQL")?;
 
     info!("Connecting to Qdrant...");
-    let qdrant_client = Qdrant::from_url(&config.qdrant_url).build()?;
+    let qdrant_client = Qdrant::from_url(&config.qdrant_url)
+        .api_key(config.qdrant_api_key.clone())
+        .build()?;
     // Retry ensure collection exists might be needed if Qdrant is starting up,
     // but the client itself is lazy/cheap. Let's retry just the network call.
     Retry::spawn(retry_strategy.clone(), || async {

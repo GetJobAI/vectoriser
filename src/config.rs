@@ -5,6 +5,7 @@ pub struct Config {
     pub postgres_url: String,
 
     pub qdrant_url: String,
+    pub qdrant_api_key: String,
     pub qdrant_collection: String,
 
     pub rabbitmq_url: String,
