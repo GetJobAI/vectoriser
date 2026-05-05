@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/vectoriser /usr/local/bin/
-COPY --from=builder /root/.cache/fastembed /root/.cache/fastembed
+COPY --from=builder /app/.fastembed_cache /app/.fastembed_cache
 COPY .env.example .env
 
 ENTRYPOINT ["vectoriser", "serve"]
