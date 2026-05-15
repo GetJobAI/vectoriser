@@ -23,9 +23,14 @@ pub async fn handle_resume_parsed(ctx: &Arc<AppContext>, event: DocumentParsedEv
 
     let (section_types, texts): (Vec<_>, Vec<_>) = embed_inputs.into_iter().unzip();
 
-    let vectors = ctx.embedding_model.embed_batch(texts).await?;
+    let vectors = ctx.embedding_model.embed_batch(texts.clone()).await?;
 
-    let embeddings = section_types.into_iter().zip(vectors.into_iter()).collect();
+    let embeddings: Vec<_> = section_types
+        .into_iter()
+        .zip(texts.into_iter())
+        .zip(vectors.into_iter())
+        .map(|((st, text), vec)| (st, text, vec))
+        .collect();
 
     qdrant::delete_vectors_for_source(
         &ctx.qdrant_client,

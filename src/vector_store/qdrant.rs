@@ -53,12 +53,12 @@ pub async fn upsert_vectors(
     collection_name: &str,
     source_id: Uuid,
     user_id: Uuid,
-    embeddings: Vec<(SectionType, Vec<f32>)>,
+    embeddings: Vec<(SectionType, String, Vec<f32>)>,
 ) -> Result<Vec<Uuid>> {
     let mut points = Vec::with_capacity(embeddings.len());
     let mut vector_ids = Vec::with_capacity(embeddings.len());
 
-    for (section_type, vector) in embeddings {
+    for (section_type, text, vector) in embeddings {
         let point_id = Uuid::new_v4();
         vector_ids.push(point_id);
 
@@ -66,7 +66,8 @@ pub async fn upsert_vectors(
             "source_id": source_id.to_string(),
             "user_id": user_id.to_string(),
             "source_type": section_type.as_str(),
-            "section_type": section_type.as_str()
+            "section_type": section_type.as_str(),
+            "text": text
         }))?;
 
         points.push(PointStruct::new(point_id.to_string(), vector, payload));

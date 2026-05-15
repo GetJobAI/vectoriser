@@ -4,29 +4,54 @@ use uuid::Uuid;
 
 use crate::models::DocumentSections;
 
+fn extract_all_text(value: &serde_json::Value) -> String {
+    let mut texts = Vec::new();
+    match value {
+        serde_json::Value::String(s) => texts.push(s.clone()),
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                let t = extract_all_text(item);
+                if !t.is_empty() {
+                    texts.push(t);
+                }
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            for v in obj.values() {
+                let t = extract_all_text(v);
+                if !t.is_empty() {
+                    texts.push(t);
+                }
+            }
+        }
+        _ => {}
+    }
+    texts.join("\n")
+}
+
 pub async fn fetch_resume(pool: &PgPool, id: Uuid) -> Result<DocumentSections> {
-    let row = sqlx::query("SELECT document FROM resumes WHERE id = $1")
+    let row = sqlx::query("SELECT content FROM resumes WHERE id = $1")
         .bind(id)
         .fetch_optional(pool)
         .await?;
 
     let row = row.ok_or_else(|| anyhow!("Resume not found for id: {}", id))?;
-    let doc: serde_json::Value = row.try_get("document")?;
+    let doc: serde_json::Value = row.try_get("content")?;
 
-    // TODO: get from specific field instead of stringifying
-    let full_text = doc.to_string();
+    let full_text = extract_all_text(&doc);
 
-    let skills = doc.get("skills").and_then(|s| s.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|v| v.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    });
-
-    // TODO: use another field if the type is Job
-    let experience_or_requirements = doc.get("experience").map(|e| e.to_string());
-
-    let education = doc.get("education").map(|e| e.to_string());
+    let skills = doc
+        .get("skills")
+        .map(extract_all_text)
+        .filter(|s| !s.is_empty());
+    let experience_or_requirements = doc
+        .get("experience")
+        .map(extract_all_text)
+        .filter(|s| !s.is_empty());
+    let education = doc
+        .get("education")
+        .map(extract_all_text)
+        .filter(|s| !s.is_empty());
 
     Ok(DocumentSections {
         full_text,
@@ -37,19 +62,25 @@ pub async fn fetch_resume(pool: &PgPool, id: Uuid) -> Result<DocumentSections> {
 }
 
 pub async fn fetch_job_analysis(pool: &PgPool, id: Uuid) -> Result<DocumentSections> {
-    let row = sqlx::query("SELECT document FROM job_analyses WHERE id = $1")
+    let row = sqlx::query("SELECT content FROM job_postings WHERE id = $1")
         .bind(id)
         .fetch_optional(pool)
         .await?;
 
     let row = row.ok_or_else(|| anyhow!("Job analysis not found for id: {}", id))?;
-    let doc: serde_json::Value = row.try_get("document")?;
+    let doc: serde_json::Value = row.try_get("content")?;
 
-    let full_text = doc.to_string();
+    let full_text = extract_all_text(&doc);
 
-    let skills = doc.get("skills").map(|s| s.to_string()); // Depending on schema, can be formatted better
-
-    let experience_or_requirements = doc.get("requirements").map(|r| r.to_string());
+    let skills = doc
+        .get("skills")
+        .map(extract_all_text)
+        .filter(|s| !s.is_empty());
+    let experience_or_requirements = doc
+        .get("requirements")
+        .or_else(|| doc.get("experience"))
+        .map(extract_all_text)
+        .filter(|s| !s.is_empty());
 
     Ok(DocumentSections {
         full_text,
