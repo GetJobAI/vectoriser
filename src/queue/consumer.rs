@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use lapin::{
-    Channel,
-    options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions},
+    Channel, ExchangeKind,
+    options::{
+        BasicAckOptions, BasicConsumeOptions, BasicNackOptions, ExchangeDeclareOptions,
+        QueueBindOptions, QueueDeclareOptions,
+    },
     types::FieldTable,
 };
 use tokio_stream::StreamExt;
@@ -11,14 +14,28 @@ use tracing::{error, info, instrument};
 
 use crate::{
     AppContext, handlers,
-    models::{DocumentParsedEvent, SourceKind},
+    models::{DocumentParsedEvent, ResumeParsedEvent, SourceKind},
 };
 
 pub async fn start_consumer(
     channel: Channel,
+    exchange_name: &str,
     queue_name: &str,
+    routing_key: &str,
     app_context: Arc<crate::AppContext>,
 ) -> Result<()> {
+    channel
+        .exchange_declare(
+            exchange_name.into(),
+            ExchangeKind::Topic,
+            ExchangeDeclareOptions {
+                durable: true,
+                ..Default::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
+
     let _queue = channel
         .queue_declare(
             queue_name.into(),
@@ -26,6 +43,16 @@ pub async fn start_consumer(
                 durable: true,
                 ..Default::default()
             },
+            FieldTable::default(),
+        )
+        .await?;
+
+    channel
+        .queue_bind(
+            queue_name.into(),
+            exchange_name.into(),
+            routing_key.into(),
+            QueueBindOptions::default(),
             FieldTable::default(),
         )
         .await?;
@@ -39,27 +66,35 @@ pub async fn start_consumer(
         )
         .await?;
 
-    info!(queue = queue_name, "Started consumer");
+    info!(
+        exchange = exchange_name,
+        queue = queue_name,
+        routing_key = routing_key,
+        "Started consumer"
+    );
 
     while let Some(delivery_result) = consumer.next().await {
         match delivery_result {
             Ok(delivery) => {
                 let payload = &delivery.data;
-                match serde_json::from_slice::<DocumentParsedEvent>(payload) {
-                    Ok(event) => match handle_event(&app_context, event).await {
-                        Ok(_) => {
-                            let _ = delivery.ack(BasicAckOptions::default()).await;
+                match serde_json::from_slice::<ResumeParsedEvent>(payload) {
+                    Ok(resume_event) => {
+                        let event = DocumentParsedEvent::from(resume_event);
+                        match handle_event(&app_context, event).await {
+                            Ok(_) => {
+                                let _ = delivery.ack(BasicAckOptions::default()).await;
+                            }
+                            Err(e) => {
+                                error!(error = %e, "Failed to process event. Nacking with requeue.");
+                                let _ = delivery
+                                    .nack(BasicNackOptions {
+                                        requeue: true,
+                                        ..Default::default()
+                                    })
+                                    .await;
+                            }
                         }
-                        Err(e) => {
-                            error!(error = %e, "Failed to process event. Nacking with requeue.");
-                            let _ = delivery
-                                .nack(BasicNackOptions {
-                                    requeue: true,
-                                    ..Default::default()
-                                })
-                                .await;
-                        }
-                    },
+                    }
                     Err(e) => {
                         error!(error = %e, "Failed to deserialize payload. Nacking without requeue.");
                         let _ = delivery

@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Deserialize)]
+pub struct ResumeParsedEvent {
+    pub resume_id: Uuid,
+    pub user_id: Uuid,
+}
+
+impl From<ResumeParsedEvent> for DocumentParsedEvent {
+    fn from(e: ResumeParsedEvent) -> Self {
+        DocumentParsedEvent {
+            source_id: e.resume_id,
+            source_type: SourceKind::Resume,
+            user_id: e.user_id,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DocumentParsedEvent {
     pub source_id: Uuid,
