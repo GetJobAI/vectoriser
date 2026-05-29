@@ -4,7 +4,7 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct ResumeParsedEvent {
     pub resume_id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: String,
 }
 
 impl From<ResumeParsedEvent> for DocumentParsedEvent {
@@ -21,7 +21,34 @@ impl From<ResumeParsedEvent> for DocumentParsedEvent {
 pub struct DocumentParsedEvent {
     pub source_id: Uuid,
     pub source_type: SourceKind,
-    pub user_id: Uuid,
+    pub user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DbInsertEvent {
+    pub table: String,
+    pub id: Uuid,
+    pub data: DbEventData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DbEventData {
+    pub user_id: String,
+}
+
+impl DbInsertEvent {
+    pub fn into_document_event(self) -> Option<DocumentParsedEvent> {
+        let source_type = match self.table.as_str() {
+            "resumes" => SourceKind::Resume,
+            "job_postings" => SourceKind::JobAnalysis,
+            _ => return None,
+        };
+        Some(DocumentParsedEvent {
+            source_id: self.id,
+            source_type,
+            user_id: self.data.user_id,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -89,6 +89,7 @@ async fn run_serve() -> Result<()> {
     .context("Failed to connect to RabbitMQ")?;
 
     let rabbitmq_channel = rmq_conn.create_channel().await?;
+    let db_events_channel = rmq_conn.create_channel().await?;
 
     info!("Initializing Embedding Model...");
     let embedding_model = EmbeddingService::new()?;
@@ -104,19 +105,36 @@ async fn run_serve() -> Result<()> {
     let consume_exchange = app_context.config.rabbitmq_consume_exchange.clone();
     let consume_queue = app_context.config.rabbitmq_consume_queue.clone();
     let consume_routing_key = app_context.config.rabbitmq_consume_routing_key.clone();
+    let db_events_exchange = app_context.config.rabbitmq_db_events_exchange.clone();
+    let db_events_queue = app_context.config.rabbitmq_db_events_queue.clone();
 
-    info!("Starting consumer...");
+    info!("Starting consumers...");
+    let ctx_parser = app_context.clone();
     let consumer_task = tokio::spawn(async move {
         if let Err(e) = queue::consumer::start_consumer(
             rabbitmq_channel,
             &consume_exchange,
             &consume_queue,
             &consume_routing_key,
-            app_context,
+            ctx_parser,
         )
         .await
         {
-            error!("Consumer error: {}", e);
+            error!("Parser consumer error: {}", e);
+        }
+    });
+
+    let ctx_db = app_context.clone();
+    let db_events_task = tokio::spawn(async move {
+        if let Err(e) = queue::consumer::start_db_events_consumer(
+            db_events_channel,
+            &db_events_exchange,
+            &db_events_queue,
+            ctx_db,
+        )
+        .await
+        {
+            error!("Db events consumer error: {}", e);
         }
     });
 
@@ -135,6 +153,7 @@ async fn run_serve() -> Result<()> {
     info!("Shutting down...");
 
     consumer_task.abort();
+    db_events_task.abort();
     health_task.abort();
 
     Ok(())

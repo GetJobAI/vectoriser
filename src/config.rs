@@ -14,6 +14,8 @@ pub struct Config {
     pub rabbitmq_consume_queue: String,
     pub rabbitmq_publish_exchange: String,
     pub rabbitmq_publish_routing_key: String,
+    pub rabbitmq_db_events_exchange: String,
+    pub rabbitmq_db_events_queue: String,
 
     pub embedding_batch_size: usize,
 }

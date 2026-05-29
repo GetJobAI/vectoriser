@@ -52,7 +52,7 @@ pub async fn upsert_vectors(
     client: &Qdrant,
     collection_name: &str,
     source_id: Uuid,
-    user_id: Uuid,
+    user_id: &str,
     embeddings: Vec<(SectionType, String, Vec<f32>)>,
 ) -> Result<Vec<Uuid>> {
     let mut points = Vec::with_capacity(embeddings.len());
@@ -64,7 +64,7 @@ pub async fn upsert_vectors(
 
         let payload = Payload::try_from(json!({
             "source_id": source_id.to_string(),
-            "user_id": user_id.to_string(),
+            "user_id": user_id,
             "source_type": section_type.as_str(),
             "section_type": section_type.as_str(),
             "text": text

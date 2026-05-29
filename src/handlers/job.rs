@@ -43,7 +43,7 @@ pub async fn handle_job_parsed(ctx: &Arc<AppContext>, event: DocumentParsedEvent
         &ctx.qdrant_client,
         &ctx.config.qdrant_collection,
         event.source_id,
-        event.user_id,
+        &event.user_id,
         embeddings,
     )
     .await?;
