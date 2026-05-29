@@ -24,30 +24,20 @@ pub struct DocumentParsedEvent {
     pub user_id: String,
 }
 
+/// Payload published by the event-relay for db_events (envelope stripped to `data` only).
 #[derive(Debug, Deserialize)]
-pub struct DbInsertEvent {
-    pub table: String,
+pub struct DbDirectEvent {
     pub id: Uuid,
-    pub data: DbEventData,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DbEventData {
     pub user_id: String,
 }
 
-impl DbInsertEvent {
-    pub fn into_document_event(self) -> Option<DocumentParsedEvent> {
-        let source_type = match self.table.as_str() {
-            "resumes" => SourceKind::Resume,
-            "job_postings" => SourceKind::JobAnalysis,
-            _ => return None,
-        };
-        Some(DocumentParsedEvent {
+impl DbDirectEvent {
+    pub fn into_document_event(self, source_type: SourceKind) -> DocumentParsedEvent {
+        DocumentParsedEvent {
             source_id: self.id,
             source_type,
-            user_id: self.data.user_id,
-        })
+            user_id: self.user_id,
+        }
     }
 }
 

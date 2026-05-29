@@ -14,7 +14,7 @@ use tracing::{error, info, instrument};
 
 use crate::{
     AppContext, handlers,
-    models::{DbInsertEvent, DocumentParsedEvent, ResumeParsedEvent, SourceKind},
+    models::{DbDirectEvent, DocumentParsedEvent, ResumeParsedEvent, SourceKind},
 };
 
 pub async fn start_consumer(
@@ -190,28 +190,31 @@ pub async fn start_db_events_consumer(
     while let Some(delivery_result) = consumer.next().await {
         match delivery_result {
             Ok(delivery) => {
-                match serde_json::from_slice::<DbInsertEvent>(&delivery.data) {
+                let routing_key = delivery.routing_key.as_str();
+                let source_type = match routing_key {
+                    "resumes.insert" | "resumes.update" => SourceKind::Resume,
+                    "job_postings.insert" | "job_postings.update" => SourceKind::JobAnalysis,
+                    other => {
+                        error!(routing_key = other, "Unexpected routing key, acking and skipping.");
+                        let _ = delivery.ack(BasicAckOptions::default()).await;
+                        continue;
+                    }
+                };
+                match serde_json::from_slice::<DbDirectEvent>(&delivery.data) {
                     Ok(db_event) => {
-                        match db_event.into_document_event() {
-                            Some(event) => {
-                                match handle_event(&app_context, event).await {
-                                    Ok(_) => {
-                                        let _ = delivery.ack(BasicAckOptions::default()).await;
-                                    }
-                                    Err(e) => {
-                                        error!(error = %e, "Failed to process db event. Nacking with requeue.");
-                                        let _ = delivery
-                                            .nack(BasicNackOptions {
-                                                requeue: true,
-                                                ..Default::default()
-                                            })
-                                            .await;
-                                    }
-                                }
-                            }
-                            None => {
-                                // Unknown table — ack and skip
+                        let event = db_event.into_document_event(source_type);
+                        match handle_event(&app_context, event).await {
+                            Ok(_) => {
                                 let _ = delivery.ack(BasicAckOptions::default()).await;
+                            }
+                            Err(e) => {
+                                error!(error = %e, "Failed to process db event. Nacking with requeue.");
+                                let _ = delivery
+                                    .nack(BasicNackOptions {
+                                        requeue: true,
+                                        ..Default::default()
+                                    })
+                                    .await;
                             }
                         }
                     }

@@ -91,6 +91,19 @@ async fn run_serve() -> Result<()> {
     let rabbitmq_channel = rmq_conn.create_channel().await?;
     let db_events_channel = rmq_conn.create_channel().await?;
 
+    rabbitmq_channel
+        .exchange_declare(
+            config.rabbitmq_publish_exchange.as_str().into(),
+            lapin::ExchangeKind::Topic,
+            lapin::options::ExchangeDeclareOptions {
+                durable: true,
+                ..Default::default()
+            },
+            lapin::types::FieldTable::default(),
+        )
+        .await
+        .context("Failed to declare publish exchange")?;
+
     info!("Initializing Embedding Model...");
     let embedding_model = EmbeddingService::new()?;
 
