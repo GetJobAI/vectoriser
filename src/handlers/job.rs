@@ -60,5 +60,6 @@ pub async fn handle_job_parsed(ctx: &Arc<AppContext>, event: DocumentParsedEvent
     )
     .await?;
 
+    info!(source_id = %event.source_id, "Successfully processed job analysis");
     Ok(())
 }
