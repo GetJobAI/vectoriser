@@ -6,11 +6,21 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+# Install before any COPY so this layer is never invalidated by source changes
+RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake lld g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=planner /app/recipe.json recipe.json
-RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake lld g++
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo chef cook --release --recipe-path recipe.json
+
 COPY . .
-RUN cargo build --release --bin vectoriser
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    RUSTFLAGS="-C link-arg=-fuse-ld=lld" \
+    cargo build --release --bin vectoriser \
+    && cp /app/target/release/vectoriser /app/vectoriser-bin
 
 FROM debian:trixie-slim AS runtime
 WORKDIR /app
@@ -20,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/vectoriser /usr/local/bin/
+COPY --from=builder /app/vectoriser-bin /usr/local/bin/vectoriser
 COPY .env.example .env
 
 ENTRYPOINT ["vectoriser"]
